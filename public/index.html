@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0807">
+  <title>Bát Mã Truy Phong · Card Games</title>
+  <!-- Year of the Horse — web fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Be+Vietnam+Pro:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── LOBBY ─────────────────────────────────────────────────────────────── -->
+<div id="screen-lobby" class="screen active">
+  <!-- Ambient crimson glow -->
+  <div class="lobby-horse-bg" aria-hidden="true"></div>
+
+  <!-- Top tagline bar -->
+  <div class="lobby-tagline">BÁT MÃ · 八馬 · YEAR OF THE HORSE</div>
+
+  <!-- Split layout: wordmark left + entry card right -->
+  <div class="lobby-split">
+    <!-- Left: wordmark + tagline -->
+    <div class="lobby-wordmark">
+      <div class="lobby-title">Bát Mã <em>Truy</em> Phong.</div>
+      <p class="lobby-subtitle">Gallop through fortune under one auspicious sky.<br>Five games, one table. Blackjack · Xì Dzách · Poker · Tiến Lên · Phỏm</p>
+      <div class="lobby-brush"></div>
+    </div>
+
+    <!-- Right: entry card -->
+    <div class="lobby-entry">
+      <div class="lobby-entry-hdr">
+        <span class="lobby-diamond">◆</span>
+        <span class="lobby-enter-label">Enter the Hall</span>
+        <span class="lobby-diamond">◆</span>
+      </div>
+      <input id="player-name" type="text" placeholder="Your name" maxlength="20" autocomplete="off" style="margin-top:4px;">
+      <div class="lobby-btns">
+        <button id="btn-create" class="btn btn-cinnabar">Mở Sòng · Create Room</button>
+        <div class="divider">or</div>
+        <div class="join-row">
+          <input id="room-code-input" type="text" placeholder="Room code" maxlength="4" autocomplete="off">
+          <button id="btn-join" class="btn btn-ghost">Join</button>
+        </div>
+      </div>
+      <p id="lobby-error" class="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- Bottom year credit -->
+  <div class="lobby-credit">丙午 · BÍNH NGỌ</div>
+</div>
+
+<!-- ── ROOM LOBBY ─────────────────────────────────────────────────────────── -->
+<div id="screen-room" class="screen">
+  <div class="room-box">
+    <div class="room-header">
+      <h2>Room: <span id="room-code-display"></span></h2>
+      <button id="btn-copy-code" class="btn btn-small btn-ghost">Copy Code</button>
+    </div>
+    <div class="room-body">
+      <!-- Left: game selection -->
+      <div class="room-col-left">
+        <div class="game-select" id="game-select-area">
+          <p class="label">Chọn Trò Chơi · Select game</p>
+          <div class="game-cards">
+            <div class="game-card" data-game="blackjack">
+              <div class="game-icon">🃏</div>
+              <div class="game-name">Blackjack</div>
+              <div class="game-desc">WESTERN · MAX 7</div>
+            </div>
+            <div class="game-card" data-game="xidach">
+              <div class="game-icon">🀇</div>
+              <div class="game-name">Xì Dzách</div>
+              <div class="game-desc">LUẬT VIỆT · MAX 7</div>
+            </div>
+            <div class="game-card" data-game="poker">
+              <div class="game-icon">♠</div>
+              <div class="game-name">Poker</div>
+              <div class="game-desc">TEXAS HOLD'EM · MAX 8</div>
+            </div>
+            <div class="game-card" data-game="tienlen">
+              <div class="game-icon">🀄</div>
+              <div class="game-name">Tiến Lên</div>
+              <div class="game-desc">LUẬT VIỆT</div>
+            </div>
+            <div class="game-card" data-game="phom">
+              <div class="game-icon">🎴</div>
+              <div class="game-name">Phỏm</div>
+              <div class="game-desc">TÁ LẢ</div>
+            </div>
+            <div class="game-card game-card-soon">
+              <div class="game-icon">✦</div>
+              <div class="game-name">More Games</div>
+              <div class="game-desc">COMING SOON</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Right: players + actions -->
+      <div class="room-col-right">
+        <div class="players-section">
+          <p class="label">Players (<span id="player-count">0</span>)</p>
+          <div id="player-list"></div>
+        </div>
+        <div class="room-actions-bottom">
+          <button id="btn-start" class="btn btn-primary" disabled>Khởi Trận · Begin</button>
+          <p id="room-error" class="error-msg"></p>
+          <button id="btn-leave" class="btn btn-ghost" style="margin-top:8px;">← Rời Sảnh · Leave</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── GAME AREA ──────────────────────────────────────────────────────────── -->
+<div id="screen-game" class="screen">
+
+  <!-- Fixed top HUD -->
+  <div class="game-hud">
+    <div class="hud-left">
+      <span class="hud-horse" aria-hidden="true">🐴</span>
+      <span id="game-title" class="game-title-label"></span>
+      <span id="game-round" class="round-label"></span>
+    </div>
+    <div class="hud-right">
+      <button id="btn-history" class="btn btn-small btn-ghost">📜 History</button>
+      <button id="btn-leave-game" class="btn btn-small btn-ghost">✕ Leave</button>
+    </div>
+  </div>
+
+  <!-- History panel -->
+  <div id="history-panel" class="history-panel">
+    <div class="history-header">
+      <span class="history-title">📜 Round History</span>
+      <button id="btn-history-close" class="history-close-btn">✕</button>
+    </div>
+    <div class="history-body"></div>
+  </div>
+
+  <!-- Table wrapper — full screen minus HUD -->
+  <div class="table-wrapper">
+
+    <!-- Jade felt oval surface -->
+    <div class="felt-oval">
+      <div class="felt-watermark" aria-hidden="true">馬</div>
+    </div>
+
+    <!-- Center table info -->
+    <div class="table-center">
+      <div id="community-cards" class="community-cards"></div>
+      <div id="pot-display" class="pot-display"></div>
+      <div id="last-play-display" class="last-play-display"></div>
+      <div id="discard-area" class="discard-area"></div>
+      <div id="status-message" class="status-msg"></div>
+    </div>
+
+    <!-- Dynamic player seats injected by JS -->
+
+    <!-- Your seat (always bottom — static) -->
+    <div id="seat-you" class="seat-you">
+      <div id="your-hand" class="fan-hand"></div>
+      <div id="your-name-label" class="your-name-label"></div>
+      <div id="your-info" class="your-info"></div>
+    </div>
+  </div>
+
+  <!-- Fixed action bar -->
+  <div class="action-bar">
+    <div id="action-area" class="action-area"></div>
+  </div>
+
+  <!-- Melds panel (Phỏm / Tiến Lên) -->
+  <div id="melds-area" class="melds-panel"></div>
+
+  <!-- Floating chat -->
+  <div class="chat-widget">
+    <button id="chat-toggle" class="chat-toggle-btn" title="Chat">💬</button>
+    <div class="chat-panel" id="chat-panel">
+      <div class="chat-panel-header">Chat
+        <button id="chat-close" style="float:right;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem">✕</button>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" type="text" placeholder="Say something…" maxlength="200" autocomplete="off">
+        <button id="btn-chat-send" class="btn btn-small">↵</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Rotate hint overlay -->
+<div id="rotate-hint">
+  <div class="rotate-icon">📱</div>
+  <div class="rotate-text">Rotate to play · Xoay Màn Hình</div>
+  <div class="rotate-sub">Landscape mode gives the best experience</div>
+  <button class="rotate-fullscreen-btn" id="rotate-fs-btn">⛶ Try Fullscreen</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
