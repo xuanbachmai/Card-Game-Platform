@@ -20,6 +20,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
+const sessions = new Map(); // sessionId → { roomCode, playerId, name }
 let botCounter = 0;
 
 function generateCode() {
@@ -51,6 +52,7 @@ function broadcastRoomState(roomCode) {
       gameType: room.gameType,
       deposit: room.deposit,
       isHost: player.isHost,
+      hasPIN: !!room.pin,
     });
   }
 }
@@ -359,29 +361,35 @@ function processBotTurns(roomCode, depth = 0) {
 // ── Socket events ─────────────────────────────────────────────────────────────
 
 io.on('connection', (socket) => {
-  socket.on('create-room', ({ playerName }) => {
+  socket.on('create-room', ({ playerName, sessionId, pin }) => {
     if (!playerName?.trim()) { socket.emit('error', { message: 'Please enter your name' }); return; }
     const roomCode = generateCode();
+    const pinVal = pin ? parseInt(pin) : null;
     rooms[roomCode] = {
       players: [{ id: socket.id, name: playerName.trim(), isHost: true, isBot: false }],
       gameType: null,
       game: null,
       deposit: 1000,  // starting chips for blackjack / poker
+      pin: (pinVal && pinVal >= 1000 && pinVal <= 9999) ? pinVal : null,
     };
     socket.join(roomCode);
     socket.roomCode = roomCode;
     socket.playerName = playerName.trim();
+    if (sessionId) sessions.set(sessionId, { roomCode, playerId: socket.id, name: playerName.trim() });
     socket.emit('room-created', { roomCode });
     broadcastRoomState(roomCode);
   });
 
-  socket.on('join-room', ({ roomCode, playerName }) => {
+  socket.on('join-room', ({ roomCode, playerName, sessionId, pin }) => {
     if (!playerName?.trim()) { socket.emit('error', { message: 'Please enter your name' }); return; }
     const code = (roomCode || '').trim().toUpperCase();
     const room = rooms[code];
     if (!room) { socket.emit('error', { message: 'Room not found. Check the code.' }); return; }
     if (room.game) { socket.emit('error', { message: 'Game already in progress' }); return; }
-    const humanCount = room.players.filter(p => !p.isBot).length;
+    if (room.pin) {
+      const providedPin = pin ? parseInt(pin) : null;
+      if (providedPin !== room.pin) { socket.emit('error', { message: 'Wrong PIN' }); return; }
+    }
     const roomMax = room.gameType === 'poker' ? 8 : ['blackjack','xidach'].includes(room.gameType) ? 7 : 4;
     if (room.players.length >= roomMax) { socket.emit('error', { message: 'Room is full' }); return; }
 
@@ -389,6 +397,7 @@ io.on('connection', (socket) => {
     socket.join(code);
     socket.roomCode = code;
     socket.playerName = playerName.trim();
+    if (sessionId) sessions.set(sessionId, { roomCode: code, playerId: socket.id, name: playerName.trim() });
     socket.emit('room-joined', { roomCode: code });
     io.to(code).emit('chat', { system: true, message: `${playerName.trim()} joined` });
     broadcastRoomState(code);
@@ -528,17 +537,73 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('chat', { playerName: socket.playerName, message: message.trim().substring(0, 300) });
   });
 
+  socket.on('reconnect-room', ({ sessionId }) => {
+    if (!sessionId) return;
+    const sess = sessions.get(sessionId);
+    if (!sess) return;
+    const { roomCode, playerId, name } = sess;
+    const room = rooms[roomCode];
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return;
+
+    // Cancel any pending removal timeout
+    if (player._disconnectTimer) {
+      clearTimeout(player._disconnectTimer);
+      delete player._disconnectTimer;
+    }
+
+    // Swap socket id
+    const oldId = player.id;
+    player.id = socket.id;
+    player.disconnected = false;
+    sessions.set(sessionId, { roomCode, playerId: socket.id, name });
+
+    socket.join(roomCode);
+    socket.roomCode = roomCode;
+    socket.playerName = name;
+
+    const inGame = !!room.game;
+    socket.emit('room-reconnected', { roomCode, gameType: room.gameType, inGame });
+
+    if (inGame) {
+      // Send current game state to reconnected player
+      const gs = room.game.getStateForPlayer(socket.id);
+      socket.emit('game-state', gs);
+    } else {
+      broadcastRoomState(roomCode);
+    }
+
+    io.to(roomCode).emit('chat', { system: true, message: `${name} reconnected` });
+  });
+
   socket.on('disconnect', () => {
     const roomCode = socket.roomCode;
     if (!roomCode || !rooms[roomCode]) return;
     const room = rooms[roomCode];
-    room.players = room.players.filter(p => p.id !== socket.id);
-    if (room.players.filter(p => !p.isBot).length === 0) { delete rooms[roomCode]; return; }
-    if (!room.players.find(p => p.isHost && !p.isBot)) {
-      const firstHuman = room.players.find(p => !p.isBot);
-      if (firstHuman) firstHuman.isHost = true;
-    }
-    io.to(roomCode).emit('chat', { system: true, message: `${socket.playerName} left` });
+    const player = room.players.find(p => p.id === socket.id);
+
+    if (!player) return;
+
+    // Mark as disconnected and give 45s grace period for reconnection
+    player.disconnected = true;
+    player._disconnectTimer = setTimeout(() => {
+      const r = rooms[roomCode];
+      if (!r) return;
+      const stillThere = r.players.find(p => p.id === player.id);
+      if (!stillThere || !stillThere.disconnected) return; // already reconnected
+      r.players = r.players.filter(p => p.id !== player.id);
+      if (r.players.filter(p => !p.isBot).length === 0) { delete rooms[roomCode]; return; }
+      if (!r.players.find(p => p.isHost && !p.isBot)) {
+        const firstHuman = r.players.find(p => !p.isBot);
+        if (firstHuman) firstHuman.isHost = true;
+      }
+      io.to(roomCode).emit('chat', { system: true, message: `${player.name} left` });
+      broadcastRoomState(roomCode);
+    }, 45000);
+
+    io.to(roomCode).emit('chat', { system: true, message: `${socket.playerName} disconnected (45s to reconnect)` });
     broadcastRoomState(roomCode);
   });
 });

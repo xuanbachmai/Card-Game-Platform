@@ -392,6 +392,13 @@ class Blackjack {
           result: activeHand?.result ?? null,
           isCurrentPlayer: p.id === curPlayer?.id,
           isYou:           p.id === playerId,
+          /* Split availability flag */
+          canSplit: (() => {
+            const ah = activeHand;
+            if (!ah || ah.cards.length !== 2) return false;
+            const [c1, c2] = ah.cards;
+            return c1.rank === c2.rank && p.chips >= ah.bet && p.hands.length < 4;
+          })(),
         };
       }),
     };

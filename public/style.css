@@ -1790,3 +1790,130 @@ input::placeholder { color: rgba(243,234,211,0.35); }
   60%  { transform: rotate(90deg); }
   100% { transform: rotate(0deg); }
 }
+
+/* ── PIN row (lobby) ─────────────────────────────────────────────────────── */
+.pin-row {
+  margin-bottom: 2px;
+}
+.pin-row input[type="number"] {
+  width: 100%;
+  padding: 8px 13px;
+  border-radius: 7px;
+  border: 1px solid var(--hairline);
+  background: rgba(255,255,255,0.04);
+  color: var(--paper);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.2em;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+.pin-row input[type="number"]::-webkit-inner-spin-button,
+.pin-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pin-row input:focus { border-color: var(--gold-bright); background: rgba(255,255,255,0.07); }
+
+/* ── Saved chips hint (lobby) ────────────────────────────────────────────── */
+.saved-chips-hint {
+  font-size: 11px;
+  color: var(--gold-pale);
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  padding: 5px 10px;
+  background: rgba(212,163,71,0.08);
+  border: 1px solid rgba(212,163,71,0.2);
+  border-radius: 6px;
+  text-align: center;
+}
+
+/* ── Room code lock icon ─────────────────────────────────────────────────── */
+.room-lock-icon {
+  font-size: 0.8em;
+  opacity: 0.75;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* ── Stats panel ─────────────────────────────────────────────────────────── */
+.stats-panel {
+  right: auto;
+  left: 8px;
+}
+.stats-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+.stats-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 60px;
+}
+.stats-block-val {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gold-bright);
+}
+.stats-block-lbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.stats-block-val.s-win  { color: #4caf50; }
+.stats-block-val.s-loss { color: var(--cinnabar-bright); }
+.stats-block-val.s-draw { color: var(--gold-pale); }
+.stats-block-val.s-net.positive { color: #4caf50; }
+.stats-block-val.s-net.negative { color: var(--cinnabar-bright); }
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.stats-table th {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: left;
+}
+.stats-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(240,201,105,0.07);
+  font-family: var(--font-body);
+  color: var(--paper);
+  font-size: 11px;
+}
+.stats-table tr.s-win-row td:first-child { color: #4caf50; }
+.stats-table tr.s-loss-row td:first-child { color: var(--cinnabar-bright); }
+.stats-table tr.s-draw-row td:first-child { color: var(--gold-pale); }
+
+/* ── Use-my-chips button ─────────────────────────────────────────────────── */
+.use-chips-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 12px;
+  font-size: 11px;
+  background: rgba(212,163,71,0.12);
+  color: var(--gold-bright);
+  border: 1px solid rgba(212,163,71,0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: background 0.15s;
+}
+.use-chips-btn:hover { background: rgba(212,163,71,0.22); }

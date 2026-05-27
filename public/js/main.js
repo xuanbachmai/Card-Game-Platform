@@ -1,3 +1,12 @@
+/* ── Session persistence ─────────────────────────────────────────────────── */
+let sessionId = localStorage.getItem('bat_ma_session');
+if (!sessionId) {
+  sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Math.random().toString(36).substr(2) + Date.now().toString(36);
+  localStorage.setItem('bat_ma_session', sessionId);
+}
+
 /* ── State ───────────────────────────────────────────────────────────────── */
 const socket = io();
 const state = {
@@ -20,6 +29,8 @@ const state = {
   roundHistory:   [],     // [{round, winners:[{name,result,chipDelta}]}]
   lastRecordedRound: 0,   // prevents double-recording the same round
   needsReLayout: false,   // set true when a resize fires during dealInProgress
+  savedChips: parseInt(localStorage.getItem('bat_ma_chips')) || null,
+  leaderboard: [],        // [{game, result, chipDelta, round}]
 };
 
 /* Module-level fan drag state (pointer drag-to-reorder) */
@@ -226,11 +237,14 @@ function renderFan(container, cards, { sm = false, selectable = false, selectedS
       const stagger = (state.gameType === 'blackjack' || state.gameType === 'xidach') ? 0.12 : 0.035;
       const delay = (dealConfig.playerIdx + i * dealConfig.numPlayers) * stagger;
       el.style.animationDelay = delay.toFixed(3) + 's';
+      // Play deal sound with matching stagger delay
+      if (typeof SFX !== 'undefined') setTimeout(() => SFX.deal(), delay * 1000);
     } else if (isNewCard) {
       // Single drawn card flies in from centre (above)
       el.style.setProperty('--deal-x', '0px');
       el.style.setProperty('--deal-y', '-150px');
       el.style.setProperty('--deal-rot', '-5deg');
+      if (typeof SFX !== 'undefined') SFX.deal();
     }
 
     if (selectable && !faceDown) {
@@ -457,12 +471,75 @@ function refreshHistoryPanel() {
 document.getElementById('btn-history')?.addEventListener('click', () => {
   const panel = document.getElementById('history-panel');
   if (!panel) return;
+  document.getElementById('stats-panel')?.classList.remove('open');
   const open = panel.classList.toggle('open');
   if (open) refreshHistoryPanel();
 });
 document.getElementById('btn-history-close')?.addEventListener('click', () => {
   document.getElementById('history-panel')?.classList.remove('open');
 });
+document.getElementById('btn-stats')?.addEventListener('click', () => {
+  const panel = document.getElementById('stats-panel');
+  if (!panel) return;
+  document.getElementById('history-panel')?.classList.remove('open');
+  const open = panel.classList.toggle('open');
+  if (open) refreshStatsPanel();
+});
+document.getElementById('btn-stats-close')?.addEventListener('click', () => {
+  document.getElementById('stats-panel')?.classList.remove('open');
+});
+
+function refreshStatsPanel() {
+  const body = document.getElementById('stats-body');
+  if (!body) return;
+  const lb = state.leaderboard;
+  if (!lb.length) {
+    body.innerHTML = '<p class="history-empty">No rounds recorded yet.</p>';
+    return;
+  }
+  const wins   = lb.filter(e => e.result === 'win').length;
+  const losses = lb.filter(e => e.result === 'lose').length;
+  const draws  = lb.filter(e => e.result === 'draw').length;
+  const netDelta = lb.reduce((sum, e) => sum + (e.chipDelta || 0), 0);
+  const netCls   = netDelta > 0 ? 'positive' : netDelta < 0 ? 'negative' : '';
+  body.innerHTML = `
+    <div class="stats-summary">
+      <div class="stats-block">
+        <div class="stats-block-val s-win">${wins}</div>
+        <div class="stats-block-lbl">Wins</div>
+      </div>
+      <div class="stats-block">
+        <div class="stats-block-val s-loss">${losses}</div>
+        <div class="stats-block-lbl">Losses</div>
+      </div>
+      <div class="stats-block">
+        <div class="stats-block-val s-draw">${draws}</div>
+        <div class="stats-block-lbl">Draws</div>
+      </div>
+      <div class="stats-block">
+        <div class="stats-block-val s-net ${netCls}">${netDelta > 0 ? '+' : ''}${netDelta}</div>
+        <div class="stats-block-lbl">Net Chips</div>
+      </div>
+    </div>
+    <table class="stats-table">
+      <thead><tr><th>Result</th><th>Game</th><th>Round</th><th>Chips</th></tr></thead>
+      <tbody>
+        ${[...lb].reverse().slice(0, 20).map(e => {
+          const icon = e.result === 'win' ? '🏆' : e.result === 'lose' ? '💀' : '🤝';
+          const rowCls = e.result === 'win' ? 's-win-row' : e.result === 'lose' ? 's-loss-row' : 's-draw-row';
+          const deltaStr = e.chipDelta != null ? (e.chipDelta > 0 ? `+${e.chipDelta}` : `${e.chipDelta}`) : '—';
+          const gameName = GAME_NAMES[e.game] || e.game || '—';
+          return `<tr class="${rowCls}">
+            <td>${icon} ${e.result.toUpperCase()}</td>
+            <td>${escHtml(gameName)}</td>
+            <td>${e.round ?? '—'}</td>
+            <td>${deltaStr}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
 
 function setError(id, msg) { const el = document.getElementById(id); if (el) el.textContent = msg || ''; }
 function clearError(id) { setError(id, ''); }
@@ -556,12 +633,24 @@ function showResultSplash(result, amtText = '') {
 }
 
 /* ── Lobby ───────────────────────────────────────────────────────────────── */
+
+// Show saved chips indicator on lobby load
+(function showSavedChipsHint() {
+  const el = document.getElementById('saved-chips-display');
+  if (!el) return;
+  if (state.savedChips) {
+    el.textContent = `Your chips from last session: ${state.savedChips.toLocaleString()}`;
+    el.style.display = 'block';
+  }
+})();
+
 document.getElementById('btn-create').addEventListener('click', () => {
   clearError('lobby-error');
   const name = document.getElementById('player-name').value.trim();
   if (!name) { setError('lobby-error', 'Please enter your name'); return; }
+  const pin = document.getElementById('room-pin')?.value.trim() || null;
   state.myName = name;
-  emit('create-room', { playerName: name });
+  emit('create-room', { playerName: name, sessionId, pin: pin || undefined });
 });
 document.getElementById('btn-join').addEventListener('click', () => {
   clearError('lobby-error');
@@ -569,8 +658,9 @@ document.getElementById('btn-join').addEventListener('click', () => {
   const code = document.getElementById('room-code-input').value.trim().toUpperCase();
   if (!name) { setError('lobby-error', 'Please enter your name'); return; }
   if (!code) { setError('lobby-error', 'Please enter a room code'); return; }
+  const pin = document.getElementById('join-pin')?.value.trim() || null;
   state.myName = name;
-  emit('join-room', { playerName: name, roomCode: code });
+  emit('join-room', { playerName: name, roomCode: code, sessionId, pin: pin || undefined });
 });
 document.getElementById('player-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btn-create').click(); });
 document.getElementById('room-code-input').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btn-join').click(); });
@@ -610,7 +700,11 @@ function sendChat() {
 }
 
 /* ── Socket events ───────────────────────────────────────────────────────── */
-socket.on('connect', () => { state.myId = socket.id; });
+socket.on('connect', () => {
+  state.myId = socket.id;
+  // Attempt to reconnect to a previous room session
+  emit('reconnect-room', { sessionId });
+});
 
 socket.on('room-created', ({ roomCode }) => {
   state.roomCode = roomCode;
@@ -623,10 +717,41 @@ socket.on('room-joined', ({ roomCode }) => {
   showScreen('screen-room');
 });
 
-socket.on('room-state', ({ players, gameType, isHost, deposit }) => {
+socket.on('room-reconnected', ({ roomCode, gameType, inGame }) => {
+  state.roomCode = roomCode;
+  state.gameType = gameType;
+  document.getElementById('room-code-display').textContent = roomCode;
+  if (inGame) {
+    document.getElementById('game-title').textContent = GAME_NAMES[gameType] || gameType;
+    const gs = document.getElementById('screen-game');
+    gs.className = gs.className.replace(/\b\w+-game\b/g, '').trim();
+    if (gameType) gs.classList.add(gameType + '-game');
+    showScreen('screen-game');
+  } else {
+    showScreen('screen-room');
+  }
+});
+
+socket.on('room-state', ({ players, gameType, isHost, deposit, hasPIN }) => {
   state.isHost = isHost;
   state.gameType = gameType;
   state.deposit = deposit ?? 1000;
+
+  // Show lock icon next to room code if room has PIN
+  const codeDisplay = document.getElementById('room-code-display');
+  if (codeDisplay) {
+    let lockEl = document.getElementById('room-pin-lock');
+    if (hasPIN && !lockEl) {
+      lockEl = document.createElement('span');
+      lockEl.id = 'room-pin-lock';
+      lockEl.className = 'room-lock-icon';
+      lockEl.textContent = '🔒';
+      lockEl.title = 'PIN protected';
+      codeDisplay.parentNode.insertBefore(lockEl, codeDisplay.nextSibling);
+    } else if (!hasPIN && lockEl) {
+      lockEl.remove();
+    }
+  }
 
   const list = document.getElementById('player-list');
   list.innerHTML = '';
@@ -688,6 +813,14 @@ socket.on('room-state', ({ players, gameType, isHost, deposit }) => {
         btn.onclick = () => emit('set-deposit', { amount: val });
         depositRow.appendChild(btn);
       });
+      // "Use my chips" button if savedChips exists
+      if (state.savedChips && state.savedChips >= 100) {
+        const useBtn = document.createElement('button');
+        useBtn.className = 'use-chips-btn';
+        useBtn.textContent = `Use my chips (${state.savedChips.toLocaleString()})`;
+        useBtn.onclick = () => emit('set-deposit', { amount: state.savedChips });
+        depositRow.parentNode.insertBefore(useBtn, depositRow.nextSibling);
+      }
     } else {
       const span = document.createElement('span');
       span.className = 'deposit-display';
@@ -742,6 +875,13 @@ socket.on('game-state', gs => {
   // Trigger chip flight animations before rebuilding the DOM
   handleChipAnimations(prevGs, gs);
 
+  // Persist chip count to localStorage
+  const me = gs.players?.find(p => p.isYou);
+  if (me?.chips !== undefined) {
+    localStorage.setItem('bat_ma_chips', me.chips);
+    state.savedChips = me.chips;
+  }
+
   // Win/lose splash for BJ & XiDach when round ends
   if (['blackjack','xidach'].includes(state.gameType)) {
     const wasPlaying = prevGs && prevGs.phase !== 'ended';
@@ -759,6 +899,31 @@ socket.on('game-state', gs => {
         const amtStr  = amt > 0 ? `+${amt} chips` : amt < 0 ? `${amt} chips` : '';
         const result  = hasWin ? 'win' : allPush ? 'push' : hasLose ? 'lose' : null;
         if (result) showResultSplash(result, amtStr);
+        // Sound effects
+        if (typeof SFX !== 'undefined') {
+          if (hasWin) SFX.win();
+          else if (hasLose && !allPush) SFX.lose();
+        }
+      }
+    }
+    // Dealer reveals hole card (playing→dealer or insurance→playing)
+    const prevPhase = prevGs?.phase;
+    const curPhase  = gs.phase;
+    if ((prevPhase === 'playing' || prevPhase === 'insurance') && curPhase === 'dealer') {
+      if (typeof SFX !== 'undefined') SFX.flip();
+    }
+  }
+
+  // Win/lose for other games
+  if (['tienlen','phom','poker'].includes(state.gameType)) {
+    const wasPlaying = prevGs && prevGs.phase !== 'ended' && prevGs.phase !== 'showdown';
+    const nowEnded   = gs.phase === 'ended' || gs.phase === 'showdown';
+    if (wasPlaying && nowEnded && typeof SFX !== 'undefined') {
+      const me = gs.players?.find(p => p.isYou);
+      const delta = me?.chipDelta;
+      if (delta != null) {
+        if (delta > 0) SFX.win();
+        else if (delta < 0) SFX.lose();
       }
     }
   }
@@ -784,7 +949,26 @@ socket.on('game-state', gs => {
       return { name: p.name, result, chipDelta: delta, chips: p.chips ?? null };
     });
     state.roundHistory.push({ round: gs.round, entries });
+
+    // Update session leaderboard with the local player's result
+    const myEntry = entries.find(e => {
+      const mePlayer = gs.players?.find(p => p.isYou);
+      return mePlayer && e.name === mePlayer.name;
+    });
+    if (myEntry) {
+      const leaderResult = myEntry.result === 'win' ? 'win'
+                         : myEntry.result === 'loss' ? 'lose'
+                         : 'draw';
+      state.leaderboard.push({
+        game: state.gameType,
+        result: leaderResult,
+        chipDelta: myEntry.chipDelta,
+        round: gs.round,
+      });
+    }
+
     refreshHistoryPanel();
+    refreshStatsPanel();
   }
 
   // Suppress re-renders that arrive during the deal animation (bots acting)
@@ -818,6 +1002,7 @@ function renderGame(gs) {
     state.prevTableKey   = '';
     state.prevDiscardKey = '';
     showDealDeck();
+    if (typeof SFX !== 'undefined') SFX.shuffle();
 
     // pendingDealAnim: cleared after 2 frames so BOTH renders (sync + rAF) animate
     requestAnimationFrame(() => requestAnimationFrame(() => { state.pendingDealAnim = false; }));
@@ -2271,6 +2456,7 @@ function buildChipUI({ maxChips = 1000, onConfirm, confirmLabel = 'Confirm', min
     btn.addEventListener('click', () => {
       if (state.betSelection + val > maxChips) return;
       state.betSelection += val;
+      if (typeof SFX !== 'undefined') SFX.chip();
       updateTally();
     });
     row.appendChild(btn);

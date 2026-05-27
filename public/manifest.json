@@ -1,0 +1,13 @@
+{
+  "name": "Bát Mã Truy Phong",
+  "short_name": "Bát Mã",
+  "description": "Multiplayer card games — Blackjack, Poker, Tiến Lên, Phỏm",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0807",
+  "theme_color": "#0a0807",
+  "orientation": "landscape",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
